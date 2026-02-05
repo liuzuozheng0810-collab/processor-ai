@@ -1,6 +1,5 @@
 // api/gemini.ts - 修正后的 429 恢复版
 import { NextApiRequest, NextApiResponse } from 'next';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import fetch from 'node-fetch'; // 确保是 node-fetch@2
 import path from 'path';
 import dotenv from 'dotenv';
@@ -9,6 +8,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const apiKey = process.env.GOOGLE_API_KEY;
+  const isVercel = !!process.env.VERCEL;
   const isLocal = process.env.NODE_ENV === 'development';
   const proxy = isLocal ? process.env.HTTP_PROXY : undefined;
 
@@ -38,13 +38,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   // 本地环境打印调试日志
   if (isLocal) {
-    console.log('--- Requesting Gemini via Proxy ---');
+    console.log('--- Requesting Gemini (Local) ---');
     console.log('Environment:', 'Local');
     console.log('API Key configured:', !!apiKey);
     console.log('Proxy configuration:', proxy ? 'Enabled' : 'Disabled');
     console.log('Proxy URL:', proxy || 'N/A');
+  } else if (isVercel) {
+    // Vercel 生产环境只打印必要的信息
+    console.log('--- Requesting Gemini (Vercel) ---');
+    console.log('Environment:', 'Vercel Production');
+    console.log('API Key configured:', !!apiKey);
   } else {
-    // 云端环境只打印必要的信息
+    // 其他云端环境
     console.log('--- Requesting Gemini (Cloud) ---');
     console.log('Environment:', 'Cloud');
     console.log('API Key configured:', !!apiKey);
@@ -84,10 +89,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fetchOptions: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents }),
-      // 保持代理配置，这是你本地成功的关键
-      agent: proxy ? new HttpsProxyAgent(proxy) : undefined
+      body: JSON.stringify({ contents })
     };
+    
+    // 仅在本地环境且有代理配置时使用代理
+    if (isLocal && proxy) {
+      // 动态导入 HttpsProxyAgent，仅在需要时使用
+      const { HttpsProxyAgent } = await import('https-proxy-agent');
+      fetchOptions.agent = new HttpsProxyAgent(proxy);
+    }
 
     const response = await fetch(`${API_URL}?key=${apiKey}`, fetchOptions);
     const data = await response.json();
