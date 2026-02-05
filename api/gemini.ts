@@ -10,7 +10,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const apiKey = process.env.GOOGLE_API_KEY;
   const isVercel = !!process.env.VERCEL;
   const isLocal = process.env.NODE_ENV === 'development';
-  const proxy = isLocal ? process.env.HTTP_PROXY : undefined;
 
   // 简单的健康检查 / 探活接口：GET 直接返回服务状态
   if (req.method === 'GET') {
@@ -38,6 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   // 本地环境打印调试日志
   if (isLocal) {
+    const proxy = process.env.HTTP_PROXY;
     console.log('--- Requesting Gemini (Local) ---');
     console.log('Environment:', 'Local');
     console.log('API Key configured:', !!apiKey);
@@ -93,10 +93,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
     
     // 仅在本地环境且有代理配置时使用代理
-    if (isLocal && proxy) {
-      // 动态导入 HttpsProxyAgent，仅在需要时使用
-      const { HttpsProxyAgent } = await import('https-proxy-agent');
-      fetchOptions.agent = new HttpsProxyAgent(proxy);
+    if (isLocal) {
+      const proxy = process.env.HTTP_PROXY;
+      if (proxy) {
+        // 动态导入 HttpsProxyAgent，仅在需要时使用
+        const { HttpsProxyAgent } = await import('https-proxy-agent');
+        fetchOptions.agent = new HttpsProxyAgent(proxy);
+      }
     }
 
     const response = await fetch(`${API_URL}?key=${apiKey}`, fetchOptions);
